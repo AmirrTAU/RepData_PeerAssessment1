@@ -1,25 +1,121 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
+title: "Reproducible Research Project 1"
+author: "Amir Rubinstein"
+date: "22 3 2021"
 output: 
-  html_document:
-    keep_md: true
+  html_document:    
+    code_folding: show
+    toc: TRUE
+    toc_float: TRUE
+    theme: united
+    
 ---
+```{r include=FALSE}  
+knitr::opts_chunk$set(echo = TRUE) 
+```
+
+```{r libraries}
+library(dplyr)
+library(ggplot2)
+```
 
 
-## Loading and preprocessing the data
+```{r read data}
+activity <- read.csv(unzip("activity.zip"))
+activity$date <- as.Date(activity$date)
+```
+
+### The mean total number of steps taken per day
+```{r meansteps}
+stepsperday <- na.omit(activity[,1:2])
+stepsperday <- aggregate(steps ~ date, stepsperday, sum)
+```
+
+1. As a Histogram:
+```{r hist}
+hist(stepsperday$steps, main = "Steps / Day", xlab = "Steps/Day", breaks = 10)
+```
+
+2. The mean & median
+```{r}
+summary(stepsperday$steps)[3:4]
+```
+
+### The average daily activity pattern
+
+```{r}
+stepsperint <- activity[,-2]
+stepsperint <- aggregate(steps ~ interval, stepsperint, mean)
+plot(stepsperint, main = "Steps / interval", xlab = "Interval", ylab = "Mean Steps", type = "l")
+```
+
+The maximum mean steps interval is
+```{r maxmeansteps}
+stepsperint[which.max(stepsperint$steps),]
+```
 
 
+### Missing Data
 
-## What is mean total number of steps taken per day?
+The number of rows where the number of steps is missing is
+```{r Missing Data points}
+summary(activity$steps)[7]
+```
+
+#### Strategy for imputing missing data
+
+I used the mean number of steps per interval to complete all cases
+
+creation of the imputed copy
+```{r imputed copy}
+activity1 <- activity
+activity1 <- merge(activity1, stepsperint, by = "interval",all.x = T)
+activity1 <- dplyr::arrange(activity1,date,interval)
+activity1$stepsnew <- with(activity1,dplyr::coalesce(steps.x, steps.y)) #coalesce is a vectorized operation from dplyr:: that takes the first non-NA valeu from a set of vectors
+activity1 <- within(activity1, rm(steps.x,steps.y))
+```
+
+A Histogram of the total steps per day from the new copy:
+```{r}
+stepsperday1 <- aggregate(stepsnew ~ date, activity1, sum)
+hist(stepsperday1$stepsnew, main = "Steps / Day with imputed values", xlab = "Steps/Day", breaks = 10)
+
+```
 
 
+and the new Median and Mean are
+```{r}
+summary(stepsperday1$stepsnew)[3:4]
 
-## What is the average daily activity pattern?
+```
 
+There was hardly any change in both, when imputing from mean values per interval.
+The old values were 
 
+```{r}
+summary(stepsperday$steps)[3:4]
+```
 
-## Imputing missing values
+So the mean did not change at all as a result of this method and the median did not change significantly.
 
+### Difference in patterns among parts of the week
 
+when we split the data according to the day of the week
+```{r weekpart factor}
+invisible(Sys.setlocale("LC_TIME", "English")) #this is to make sure that day names are in english, as in my case they weren't.
+activity1$day <- weekdays(activity1$date, abbreviate = T)
+activity1 <- within(activity1,{
+     weekpart <- NA
+     weekpart[day %in% c("Sun","Mon","Tue","Wed","Thu")] <- "weekday"
+     weekpart[day %in% c("Fri","Sat")] <- "weekend"
+     weekpart <- as.factor(weekpart)
+})
+invisible(Sys.setlocale()) #return to your local local
+```
 
-## Are there differences in activity patterns between weekdays and weekends?
+and summarise the mean number of steps for each interval, we can see the differences in activity patterns among weekdays and weekends
+```{r}
+stepsperint1 <- activity1 %>% dplyr::group_by(weekpart, interval) %>% summarise(mean = mean(stepsnew))
+qplot(interval, mean, data = stepsperint1, geom = "line", facets = "weekpart", main = "Pattern differences among parts of the week", xlab = "Interval", ylab = "Mean Steps")
+```
+
